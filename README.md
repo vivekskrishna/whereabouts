@@ -9,6 +9,11 @@ If you need a way to assign IP addresses dynamically across your cluster -- Wher
 
 Whereabouts can be used for both IPv4 & IPv6 addressing.
 
+#added by vivek
+This version of whereabouts is an experimental attempt to integrate with openwisp-ipam so that IP address will be allocated from a central place. In this way whereabouts talk to a central openwisp-ipam server to get the IP for the multus interface making the administration easy. openwisp-ipam supports API which will be used by whereabouts to allocate/deallocate IP.
+for more info on openwisp-ipam, refer to https://github.com/openwisp/openwisp-ipam
+
+
 ## Introduction
 
 CNI (Container Network Interface) plugins typically have a configuration element named `ipam`. CNI IPAM plugins can assign IP addresses, and Whereabouts assigns IP addresses within a range -- without having to use a DHCP server. 
