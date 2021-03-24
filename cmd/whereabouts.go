@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"net"
 
 	"github.com/containernetworking/cni/pkg/skel"
 	cnitypes "github.com/containernetworking/cni/pkg/types"
@@ -11,7 +12,8 @@ import (
 	"github.com/dougbtv/whereabouts/pkg/allocate"
 	"github.com/dougbtv/whereabouts/pkg/config"
 	"github.com/dougbtv/whereabouts/pkg/logging"
-	"github.com/dougbtv/whereabouts/pkg/storage"
+	//"github.com/dougbtv/whereabouts/pkg/storage"
+	"github.com/dougbtv/whereabouts/pkg/openwisp"
 	"github.com/dougbtv/whereabouts/pkg/types"
 )
 
@@ -32,6 +34,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return err
 	}
 	logging.Debugf("ADD - IPAM configuration successfully read: %+v", filterConf(*ipamConf))
+	logging.Debugf("ADD - Input parameters were %s and %s", args.StdinData, ipamConf.Pool )
 
 	// Initialize our result, and assign DNS & routing.
 	result := &current.Result{}
@@ -39,11 +42,16 @@ func cmdAdd(args *skel.CmdArgs) error {
 	result.Routes = ipamConf.Routes
 
 	logging.Debugf("Beginning IPAM for ContainerID: %v", args.ContainerID)
-	newip, err := storage.IPManagement(types.Allocate, *ipamConf, args.ContainerID, getPodRef(args.Args))
+	//newip, err := storage.IPManagement(types.Allocate, *ipamConf, args.ContainerID, getPodRef(args.Args))
+	newip, gw1, err := openwisp.IPManagement(types.Allocate, *ipamConf, args.ContainerID, getPodRef(args.Args))
+	ipamConf.Gateway = net.ParseIP(gw1)
+
+
 	if err != nil {
 		logging.Errorf("Error at storage engine: %s", err)
 		return fmt.Errorf("Error at storage engine: %w", err)
 	}
+
 
 	// Determine if v4 or v6.
 	var useVersion string
@@ -58,6 +66,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 		Address: newip,
 		Gateway: ipamConf.Gateway})
 
+	logging.Debugf("IP is %s",result.IPs)
 	// Assign all the static IP elements.
 	for _, v := range ipamConf.Addresses {
 		result.IPs = append(result.IPs, &current.IPConfig{
@@ -65,7 +74,6 @@ func cmdAdd(args *skel.CmdArgs) error {
 			Address: v.Address,
 			Gateway: v.Gateway})
 	}
-
 	return cnitypes.PrintResult(result, confVersion)
 }
 
@@ -78,7 +86,8 @@ func cmdDel(args *skel.CmdArgs) error {
 	logging.Debugf("DEL - IPAM configuration successfully read: %+v", filterConf(*ipamConf))
 	logging.Debugf("ContainerID: %v", args.ContainerID)
 
-	_, err = storage.IPManagement(types.Deallocate, *ipamConf, args.ContainerID, getPodRef(args.Args))
+	//_, err = storage.IPManagement(types.Deallocate, *ipamConf, args.ContainerID, getPodRef(args.Args))
+	_,_,err = openwisp.IPManagement(types.Deallocate, *ipamConf, args.ContainerID, getPodRef(args.Args))
 	if err != nil {
 		logging.Verbosef("WARNING: Problem deallocating IP: %s", err)
 		// return fmt.Errorf("Error deallocating IP: %s", err)

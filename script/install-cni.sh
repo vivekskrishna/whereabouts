@@ -19,6 +19,7 @@ CNI_CONF_DIR=${CNI_CONF_DIR:-"/host/etc/cni/net.d"}
 mkdir -p $CNI_CONF_DIR/whereabouts.d
 WHEREABOUTS_KUBECONFIG=$CNI_CONF_DIR/whereabouts.d/whereabouts.kubeconfig
 WHEREABOUTS_FLATFILE=$CNI_CONF_DIR/whereabouts.d/whereabouts.conf
+WHEREABOUTS_IPAMFILE=$CNI_CONF_DIR/whereabouts.d/whereabouts-ipam.conf
 WHEREABOUTS_KUBECONFIG_LITERAL=$(echo "$WHEREABOUTS_KUBECONFIG" | sed -e s'|/host||')
 
 # ------------------------------- Generate a "kube-config"
@@ -26,6 +27,13 @@ SERVICE_ACCOUNT_PATH=/var/run/secrets/kubernetes.io/serviceaccount
 KUBE_CA_FILE=${KUBE_CA_FILE:-$SERVICE_ACCOUNT_PATH/ca.crt}
 SERVICEACCOUNT_TOKEN=$(cat $SERVICE_ACCOUNT_PATH/token)
 SKIP_TLS_VERIFY=${SKIP_TLS_VERIFY:-false}
+
+
+
+IPAMTYPE=$(cat /var/ipam/type)
+IPAMPWD=$(cat /var/ipam/password)
+IPAMURL=$(cat /var/ipam/url)
+IPAMUSER=$(cat /var/ipam/username)
 
 # Setup our logging routines
 
@@ -103,6 +111,15 @@ EOF
   "kubernetes": {
     "kubeconfig": "${WHEREABOUTS_KUBECONFIG_LITERAL}"
   }
+}
+EOF
+
+  cat > $WHEREABOUTS_IPAMFILE <<EOF
+{
+  "ipamtype": "${IPAMTYPE}",
+  "ipamuser": "${IPAMUSER}",
+  "ipampwd": "${IPAMPWD}",
+  "ipamurl": "${IPAMURL}"
 }
 EOF
 

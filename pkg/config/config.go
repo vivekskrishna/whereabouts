@@ -30,7 +30,7 @@ func canonicalizeIP(ip *net.IP) error {
 // LoadIPAMConfig creates IPAMConfig using json encoded configuration provided
 // as `bytes`. At the moment values provided in envArgs are ignored so there
 // is no possibility to overload the json configuration using envArgs
-func LoadIPAMConfig(bytes []byte, envArgs string) (*types.IPAMConfig, string, error) {
+func LoadIPAMConfig(bytes []byte, envArgs string) (*types.IPAMConfig, string, error ) {
 
 	// We first load up what we already have, before we start reading a file...
 	n := types.Net{}
@@ -41,6 +41,11 @@ func LoadIPAMConfig(bytes []byte, envArgs string) (*types.IPAMConfig, string, er
 	if n.IPAM == nil {
 		return nil, "", fmt.Errorf("IPAM config missing 'ipam' key")
 	}
+	//if n.Arg == nil {
+	//	return nil, "", fmt.Errorf("IPAM config missing 'args' key")
+	//} else {
+	//	fmt.Printf("decoded Arg is %v and bytes is %s",n.Arg, bytes)
+	//}
 
 	args := types.IPAMEnvArgs{}
 	if err := cnitypes.LoadArgs(envArgs, &args); err != nil {
@@ -89,6 +94,7 @@ func LoadIPAMConfig(bytes []byte, envArgs string) (*types.IPAMConfig, string, er
 		logging.Errorf("Merge error with flat file: %s", err)
 	}
 
+	//logging.Debugf("IPAM is %v",n.IPAM)
 	// Logging
 	if n.IPAM.LogFile != "" {
 		logging.SetLogFile(n.IPAM.LogFile)
@@ -96,6 +102,18 @@ func LoadIPAMConfig(bytes []byte, envArgs string) (*types.IPAMConfig, string, er
 	if n.IPAM.LogLevel != "" {
 		logging.SetLogLevel(n.IPAM.LogLevel)
 	}
+
+	//netipam := types.Net{}
+        //jsonFile1, _ := os.Open("/etc/cni/net.d/whereabouts.d/whereabouts_net.conf")
+        //defer jsonFile1.Close()
+        //jsonBytes1, _ := ioutil.ReadAll(jsonFile1)
+        //json.Unmarshal(jsonBytes1, &netipam.IPAM)
+        //if err1 := mergo.Merge(&n, netipam); err1 != nil {
+        //        logging.Errorf("Merge error with flat file: %s", err1)
+        //}
+	//logging.Debugf("IPAM is %v and %v",n,netipam)
+	//fmt.Printf("IPAM is %v ",n.Arg)
+
 
 	if foundflatfile != "" {
 		logging.Debugf("Used defaults from parsed flat file config @ %s", foundflatfile)
@@ -171,7 +189,11 @@ func LoadIPAMConfig(bytes []byte, envArgs string) (*types.IPAMConfig, string, er
 
 	// Copy net name into IPAM so not to drag Net struct around
 	n.IPAM.Name = n.Name
+	arg := n.Arg
+	n.IPAM.Pool = arg.Pool
 
+	//logging.Debugf("n.Arg is %v", n.Arg)
+	//fmt.Printf("n.Arg is %v", n.Arg)
 	return n.IPAM, n.CNIVersion, nil
 }
 

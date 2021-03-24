@@ -14,10 +14,25 @@ const (
 
 // Net is The top-level network config - IPAM plugins are passed the full configuration
 // of the calling plugin, not just the IPAM section.
+
+type IPAMArg struct {
+        Pool       string        `json:"pool"`
+}
+
+
 type Net struct {
 	Name       string      `json:"name"`
 	CNIVersion string      `json:"cniVersion"`
+	Arg        *IPAMArg    `json:"args"`
 	IPAM       *IPAMConfig `json:"ipam"`
+}
+
+// extra config to communicate to IPAM Provider
+type IPAMPlug struct {
+	Type       string        `json:"type,omitempty"`
+	URL        string        `json:"url,omitempty"`
+	Username   string        `json:"username,omitempty"`
+	Password   string        `json:"password,omitempty"`
 }
 
 // IPAMConfig describes the expected json configuration for this plugin
@@ -44,6 +59,7 @@ type IPAMConfig struct {
 	Gateway           net.IP
 	Kubernetes        KubernetesConfig `json:"kubernetes,omitempty"`
 	ConfigurationPath string           `json:"configuration_path"`
+	Pool              string
 }
 
 // IPAMEnvArgs are the environment vars we expect
