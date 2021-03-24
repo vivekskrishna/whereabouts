@@ -1,0 +1,115 @@
+package openwisp
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"time"
+	"net/http"
+	"os"
+
+	"github.com/dougbtv/whereabouts/pkg/allocate"
+	"github.com/dougbtv/whereabouts/pkg/logging"
+	"github.com/dougbtv/whereabouts/pkg/types"
+	"encoding/json"
+)
+
+var (
+	// RequestTimeout defines how long the context timesout in
+	RequestTimeout = 5 * time.Second
+
+	// DatastoreRetries defines how many retries are attempted when updating the Pool
+	DatastoreRetries = 100
+)
+
+type IPAMPlug struct {
+        Type       string        `json:"type,omitempty"`
+        URL        string        `json:"url,omitempty"`
+        Username   string        `json:"username,omitempty"`
+        Password   string        `json:"password,omitempty"`
+}
+
+
+// IPPool is the interface that represents an manageable pool of allocated IPs
+type IPPool interface {
+	Allocations() []types.IPReservation
+	Update(ctx context.Context, reservations []types.IPReservation) error
+}
+
+// Store is the interface that wraps the basic IP Allocation methods on the underlying storage backend
+type Store interface {
+	GetIPPool(ctx context.Context, ipRange string) (IPPool, error)
+	Status(ctx context.Context) error
+	Close() error
+}
+
+func getCredentials(IPAMPlug) {
+	
+}
+// IPManagement manages ip allocation and deallocation from a storage perspective
+func IPManagement(mode int, ipamConf types.IPAMConfig, containerID string, podRef string) (net.IPNet, error) {
+
+	logging.Debugf("IPManagement -- mode: %v / host: %v / containerID: %v / podRef: %v", mode, ipamConf.EtcdHost, containerID, podRef)
+
+	var newip net.IPNet
+	// Skip invalid modes
+	switch mode {
+	case types.Allocate, types.Deallocate:
+	default:
+		return newip, fmt.Errorf("Got an unknown mode passed to IPManagement: %v", mode)
+	}
+
+	/*
+	var ipam Store
+	var pool IPPool
+	var err error
+	switch ipamConf.Datastore {
+	case types.DatastoreETCD:
+		ipam, err = NewETCDIPAM(ipamConf)
+	case types.DatastoreKubernetes:
+		ipam, err = NewKubernetesIPAM(containerID, ipamConf)
+	}
+	if err != nil {
+		logging.Errorf("IPAM %s client initialization error: %v", ipamConf.Datastore, err)
+		return newip, fmt.Errorf("IPAM %s client initialization error: %v", ipamConf.Datastore, err)
+	}
+	defer ipam.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), RequestTimeout)
+	defer cancel()
+        
+	// Check our connectivity first
+	if err := ipam.Status(ctx); err != nil {
+		logging.Errorf("IPAM connectivity error: %v", err)
+		return newip, err
+	}
+	*/
+
+	ipamProv := IPAMPlug{}
+        jsonFile, err := os.Open("/etc/cni/net.d/whereabouts.d/whereabouts-ipam.conf")
+
+        if err != nil {
+            return newip, fmt.Errorf("Error opening flat configuration file @ %s with: %s", confpath, err)
+        }
+
+        defer jsonFile.Close()
+
+        jsonBytes, err := ioutil.ReadAll(jsonFile)
+        if err != nil {
+            return newip, fmt.Errorf("LoadIPAMConfig Flatfile (%s) - ioutil.ReadAll error: %s", confpath, err)
+        }
+
+        if err := json.Unmarshal(jsonBytes, &flatipam.IPAM); err != nil {
+            return newip, fmt.Errorf("LoadIPAMConfig Flatfile (%s) - JSON Parsing Error: %s / bytes: %s", confpath, err, jsonBytes)
+        } 
+
+	credential, err := getCredentials(ipamProv)
+        logging.Debugf("The credential token is %s",credential)
+	return newip, err
+
+}
+
+func main() {
+	fmt.Println("Hello, playground")
+}
+
