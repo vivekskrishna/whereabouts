@@ -64,7 +64,7 @@ spec:
       "ipam": {
         "type": "whereabouts",
         "datastore": "kubernetes",
-        "range": "192.168.2.225/28",
+        "range": "192.168.2.225/28", <--- Ignored when ipam provider is used, the above pool name will be used instead
         "log_file": "/tmp/whereabouts.log",
         "log_level": "debug"
       }
