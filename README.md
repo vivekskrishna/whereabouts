@@ -17,6 +17,7 @@ for more info on openwisp-ipam, refer to https://github.com/openwisp/openwisp-ip
 For now if the annotation podname: "" is added to a deployment, then the annotation value is used as the reference in the ipam database. so if for some reason the pod moves to a different node and starts up, it will still get same IP if a IPAM delete was not sent for the failed pod. In this way IP doesnt change for pod migration due to node failure etc.
 
 Example pod definition
+```
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -44,8 +45,10 @@ spec:
         imagePullPolicy: IfNotPresent
         name: nginx
         resources: {}
+```
+Pool definition which supports pool name definition using the CNI Args convention
 
-Pool definition which supports pool anem definition using the CNI Args convention
+```
 apiVersion: "k8s.cni.cncf.io/v1"
 kind: NetworkAttachmentDefinition
 metadata:
@@ -66,7 +69,7 @@ spec:
         "log_level": "debug"
       }
     }'
-    
+```
 ## Introduction
 
 CNI (Container Network Interface) plugins typically have a configuration element named `ipam`. CNI IPAM plugins can assign IP addresses, and Whereabouts assigns IP addresses within a range -- without having to use a DHCP server. 
