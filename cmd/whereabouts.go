@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"strings"
 	"net"
-
+        "os"
+	"io/ioutil"
+        "encoding/json"
 	"github.com/containernetworking/cni/pkg/skel"
 	cnitypes "github.com/containernetworking/cni/pkg/types"
 	"github.com/containernetworking/cni/pkg/types/current"
@@ -14,8 +16,17 @@ import (
 	"github.com/dougbtv/whereabouts/pkg/logging"
 	//"github.com/dougbtv/whereabouts/pkg/storage"
 	"github.com/dougbtv/whereabouts/pkg/openwisp"
+	"pkg/phpipam"
 	"github.com/dougbtv/whereabouts/pkg/types"
 )
+
+type IPAMPlug struct {
+        Type       string        `json:"ipamtype,omitempty"`
+        Url        string        `json:"ipamurl,omitempty"`
+        Username   string        `json:"ipamuser,omitempty"`
+        Password   string        `json:"ipampwd,omitempty"`
+}
+
 
 func main() {
 	// TODO: implement plugin version
@@ -40,6 +51,25 @@ func cmdAdd(args *skel.CmdArgs) error {
 	result := &current.Result{}
 	result.DNS = ipamConf.DNS
 	result.Routes = ipamConf.Routes
+
+        ipamProv := IPAMPlug{}
+	jsonFile, err := os.Open("/etc/cni/net.d/whereabouts.d/whereabouts-ipam.conf")
+
+        if err != nil {
+            logging.Debugf("1")
+            return fmt.Errorf("Error opening flat configuration file %s", err)
+        }
+
+        defer jsonFile.Close()
+
+        jsonBytes, err := ioutil.ReadAll(jsonFile)
+        if err != nil {
+            return fmt.Errorf("LoadIPAMConfig Flatfile - ioutil.ReadAll error: %s", err)
+        }
+
+        if err := json.Unmarshal(jsonBytes, &ipamProv); err != nil {
+            return fmt.Errorf("LoadIPAMConfig Flatfile - JSON Parsing Error: %s / bytes: %s", err, jsonBytes)
+        }
 
 	logging.Debugf("Beginning IPAM for ContainerID: %v", args.ContainerID)
 	//newip, err := storage.IPManagement(types.Allocate, *ipamConf, args.ContainerID, getPodRef(args.Args))

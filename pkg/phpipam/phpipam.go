@@ -6,7 +6,7 @@ import (
 	"net"
 	"time"
 	"net/http"
-	"net/url"
+//	"net/url"
 	"os"
         "io/ioutil"
 	"strings"
@@ -31,6 +31,7 @@ var ipamConf types.IPAMConfig
 type IPAMPlug struct {
         Type       string        `json:"ipamtype,omitempty"`
         Url        string        `json:"ipamurl,omitempty"`
+	AppID      string        `json:"appid,omitempty"`
         Username   string        `json:"ipamuser,omitempty"`
         Password   string        `json:"ipampwd,omitempty"`
 }
@@ -48,21 +49,35 @@ type SubnetDescription struct {
 //get the list of subnets to make sure the requested one is present and also extract default GW from description field
 type SubnetInfo struct {
 	Id      string        `json:"id"`
-	Name	string        `json:"name"`
+	Name	string        `json:"description"`
 	Subnet  string        `json:"subnet"`
-	Desc    string        `json:"description"`
-	IP      string        `json:"ip_address",omitempty`
+	Mask    string        `json:"mask"`
+	Gateway string        `json:"gateway",omitempty`
 }
 
 type SubnetList struct {
-	SList    []SubnetInfo    `json:"results"`
+	SList    []SubnetInfo    `json:"data"`
+}
+
+//json format to get IP details in a subnet
+type SubnetIP struct {
+	IP        string         `json:"ip_address",omitempty`
+	Desc      string         `json:"description",omitempty`
+	Hostname  string         `json:"hostname",omitempty`
+	Gateway   string         `json:"is_gateway",omitempty`
+	SubnetID  string         `json:"subnetId",omitempty`
+	Id        string         `json:"id",omitempty`
 }
 
 //json format to reserve a new IP in a subnet
 type SubnetIPCreate struct {
-	IP        string         `json:"ip_address"`
-	Desc      string         `json:"description"`
-	SubnetID  string         `json:"subnet"`
+        IP        string         `json:"data",omitempty`
+        Id        string         `json:"id",omitempty`
+}
+
+//array of SubnetIP presented as a list for a subnet ip addresses details
+type SubnetIPList struct {
+	SList     []SubnetIP     `json:"data",omitempty`
 }
 
 // IPPool is the interface that represents an manageable pool of allocated IPs
@@ -80,12 +95,24 @@ type Store interface {
 
 func getCredentials(ipam IPAMPlug) (string, error) {
     urlstring := "http://" + ipam.Url + "/api/v1/user/token/"
-    resp, err := http.PostForm(urlstring,
-	url.Values{"username": {ipam.Username}, "password": {ipam.Password}})
+    client := &http.Client{
+	Timeout: time.Second * 5,
+    }
+
+    req, err := http.NewRequest("GET", urlstring, nil)
+    if err != nil {
+	return "Error", fmt.Errorf("Got error %s", err.Error())
+    }
+    username := "root"
+    password := "ragavendra"
+    req.SetBasicAuth(username, password)
+    resp, err := client.Do(req)
+    if err != nil {
+	return "Error", fmt.Errorf("Got error %s", err.Error())
+    }  
     defer resp.Body.Close()
     if resp.StatusCode == 200 {
         body, _ := ioutil.ReadAll(resp.Body)
-        //logging.Debugf("Body is %s and %d",body,resp.StatusCode)
 	var tok IPAMToken
         if err := json.Unmarshal(body, &tok); err != nil {
 		return "", err
@@ -96,14 +123,40 @@ func getCredentials(ipam IPAMPlug) (string, error) {
     return "", err
 }
 
+func getGateway(token string, ipam IPAMPlug, subnetID string) string {
+
+	urlstring := "http://" + ipam.Url + "/api/" + ipam.AppID + "/subnets/" + subnetID + "/addresses"
+        client := &http.Client{}
+        req, _ := http.NewRequest("GET", urlstring, nil)
+        req.Header.Set("token", token)
+        resp, _ := client.Do(req)
+        defer resp.Body.Close()
+        var ipList SubnetIPList
+        if resp.StatusCode == 200 {
+                body, _ := ioutil.ReadAll(resp.Body)
+                if err := json.Unmarshal(body, &ipList); err != nil {
+                        logging.Errorf("json decoding failure of %s with error %s",body,err)
+                        return ""
+                }
+                logging.Debugf("decoded data is %v",ipList)
+		for _,ips := range  ipList.SList {
+                        if ips.Gateway == "1" {
+				return ips.IP
+                        }
+                }
+		return ""
+	}
+	return ""
+
+}
+
 func allocateIP(token string, ipam IPAMPlug, pod string , pool string) (net.IPNet, string, error) {
 	var newip net.IPNet
 	// First we will get the list of subnet to make sure we have the subnet of interest and also get teh Defalt GW for that subnet ID
-        urlstring := "http://" + ipam.Url + "/api/v1/subnet/"
+        urlstring := "http://" + ipam.Url + "/api/" + ipam.AppID + "/subnets/"
 	client := &http.Client{}
         req, _ := http.NewRequest("GET", urlstring, nil)
-	btoken := "Bearer " + token
-	req.Header.Set("Authorization", btoken)
+	req.Header.Set("token", token)
         resp, _ := client.Do(req)
 	defer resp.Body.Close()
 	var subnetList SubnetList
@@ -121,27 +174,27 @@ func allocateIP(token string, ipam IPAMPlug, pod string , pool string) (net.IPNe
 		id := ""
 		gw := ""
 		sn := ""
+		mask := ""
 		for _,subnets := range  subnetList.SList {
 			if subnets.Name == pool {
 				id = subnets.Id
-				var sgw SubnetDescription
-				json.Unmarshal([]byte(subnets.Desc),&sgw)
-				gw = sgw.Defaultgw
+				gw = getGateway(token, ipam, id)
 				sn = subnets.Subnet
+				mask = subnets.Mask
 				break
 			}
 		}
-		logging.Debugf("id for pool %s is %s with def gw %s and subnet %s",pool,id,gw,sn)
+		logging.Debugf("id for pool %s is %s with def gw %s and subnet %s/%s",pool,id,gw,sn,mask)
 
-		// check if a entry already exists for th podRef
-		urlstring := "http://" + ipam.Url + "/api/v1/subnet/" + id + "/ip-address"
+
+		// check if a entry already exists for the podRef
+		urlstring := "http://" + ipam.Url + "/api/" + ipam.AppID + "/subnets/" + id + "/addresses"
                 client := &http.Client{}
                 req, _ := http.NewRequest("GET", urlstring, nil)
-                btoken := "Bearer " + token
-                req.Header.Set("Authorization", btoken)
+		req.Header.Set("token", token)
                 resp, _ := client.Do(req)
                 defer resp.Body.Close()
-                var ipList SubnetList
+                var ipList SubnetIPList
                 if resp.StatusCode != 200 {
                         return newip, "",fmt.Errorf("error")
                 }
@@ -154,7 +207,7 @@ func allocateIP(token string, ipam IPAMPlug, pod string , pool string) (net.IPNe
                 ipId := ""
 		ipAddr := ""
                 for _, ipBlock := range ipList.SList {
-                        if ipBlock.Desc == pod {
+                        if ipBlock.Hostname == pod {
                                 ipId = ipBlock.Id
 				ipAddr = ipBlock.IP
                                 break
@@ -162,10 +215,7 @@ func allocateIP(token string, ipam IPAMPlug, pod string , pool string) (net.IPNe
                 }
                 if ipId != "" {
                         logging.Debugf(" IP %s already allocated for pod %s",ipAddr, pod)
-			subnet_det := strings.Split(sn, "/")
-                        ipNet := ipAddr + "/" + subnet_det[1]
-                //      newip.IP = []byte(ip)
-                //      newip.Mask = []byte(subnet_det[1])
+                        ipNet := ipAddr + "/" + sn
                         _,newip1,_ := net.ParseCIDR(ipNet)
                         newip.IP = net.ParseIP(ipAddr)
                         newip.Mask = newip1.Mask
@@ -178,34 +228,15 @@ func allocateIP(token string, ipam IPAMPlug, pod string , pool string) (net.IPNe
 		allocated := 0
 		retries := DatastoreRetries
 		for allocated < 1 &&  retries > 0 {
-               		urlstring := "http://" + ipam.Url + "/api/v1/subnet/" + id + "/get-next-available-ip/"
+               		urlstring := "http://" + ipam.Url + "/api/" + ipam.AppID + "/subnets/addresses/first_free/" + id
         		client := &http.Client{}
-        		req, _ := http.NewRequest("GET", urlstring, nil)
-        		btoken := "Bearer " + token
-        		req.Header.Set("Authorization", btoken)
+			var subnetIP SubnetIP
+                        subnetIP.Hostname = pod
+                        ipDet_json,_ := json.Marshal(subnetIP)
+                        req_body := strings.NewReader(string(ipDet_json))
+        		req, _ := http.NewRequest("GET", urlstring, req_body)
+			req.Header.Set("token", token)
 			resp, _ := client.Do(req)
-			defer resp.Body.Close()
-			if resp.StatusCode != 200 {
-				return newip, "", fmt.Errorf("error response %d",resp.StatusCode)
-			}
-			body, _ := ioutil.ReadAll(resp.Body)
-			ip := strings.Trim(string(body), "\"")
-			logging.Debugf("Next free IP available in pool %s is %s",pool, ip)
-			var ipDet SubnetIPCreate
-			ipDet.IP = ip
-			ipDet.Desc = pod
-			ipDet.SubnetID = id
-			ipDet_json,_ := json.Marshal(ipDet)
-			req_body := strings.NewReader(string(ipDet_json))
-			logging.Debugf("encoded data is %s",ipDet_json)
-			urlstring = "http://" + ipam.Url + "/api/v1/subnet/" + id + "/ip-address/"
-			client1 := &http.Client{}
-                        req, _ = http.NewRequest("POST", urlstring, req_body)
-                        btoken = "Bearer " + token
-                        req.Header.Set("Authorization", btoken)
-			req.Header.Set("Content-Type", "application/json")
-			logging.Debugf("Request is %s",req)
-                        resp, err = client1.Do(req)
 			defer resp.Body.Close()
                         if resp.StatusCode != 201 {
 				logging.Debugf("Got response %s and %s",resp,err)
@@ -214,10 +245,13 @@ func allocateIP(token string, ipam IPAMPlug, pod string , pool string) (net.IPNe
 			    allocated = 1
 			    retries--
 			}
-			subnet_det := strings.Split(sn, "/")
-			ipNet := ip + "/" + subnet_det[1]
-		//	newip.IP = []byte(ip)
-		//	newip.Mask = []byte(subnet_det[1])
+                        var IPDetails SubnetIPCreate 
+			if err := json.Unmarshal(body, &IPDetails); err != nil {
+                            logging.Errorf("json decoding failure of %s with error %s",body,err)
+                            return newip,"", err
+                        }
+			ip := IPDetails.IP
+			ipNet := ip + "/" + sn
 		        _,newip1,_ := net.ParseCIDR(ipNet) 
                         newip.IP = net.ParseIP(ip)
 			newip.Mask = newip1.Mask
@@ -231,78 +265,80 @@ func allocateIP(token string, ipam IPAMPlug, pod string , pool string) (net.IPNe
 
 func deallocateIP(token string, ipam IPAMPlug, pod string , pool string) (net.IPNet, string, error) {
 	var newip net.IPNet
-	// First we will get the list of subnet to make sure we have the subnet of interest and also get teh Defalt GW for that subnet ID
-        urlstring := "http://" + ipam.Url + "/api/v1/subnet/"
-	client := &http.Client{}
+        // First we will get the list of subnet to make sure we have the subnet of interest and also get teh Defalt GW for that subnet ID
+        urlstring := "http://" + ipam.Url + "/api/" + ipam.AppID + "/subnets/"
+        client := &http.Client{}
         req, _ := http.NewRequest("GET", urlstring, nil)
-	btoken := "Bearer " + token
-	req.Header.Set("Authorization", btoken)
+        req.Header.Set("token", token)
         resp, _ := client.Do(req)
-	defer resp.Body.Close()
-	var subnetList SubnetList
-	if resp.StatusCode == 200 {
-        	body, _ := ioutil.ReadAll(resp.Body)
-        	//logging.Debugf("Body is %s and %d",body,resp.StatusCode)
-        	//var tok IPAMToken
-        	if err := json.Unmarshal(body, &subnetList); err != nil {
-			logging.Errorf("json decoding failure of %s with error %s",body,err)
-                	return newip,"", err
-        	}
-		logging.Debugf("decoded data is %v",subnetList.SList)
-		// we will go through the list to find the subnet of interest and extract its id and gw info
-		
-		id := ""
-		gw := ""
-		sn := ""
-		for _,subnets := range  subnetList.SList {
-			if subnets.Name == pool {
-				id = subnets.Id
-				var sgw SubnetDescription
-				json.Unmarshal([]byte(subnets.Desc),&sgw)
-				gw = sgw.Defaultgw
-				sn = subnets.Subnet
-				break
-			}
-		}
-		logging.Debugf("id for pool %s is %s with def gw %s and subnet %s",pool,id,gw,sn)
-		// get the next free ip in subnet
-		urlstring := "http://" + ipam.Url + "/api/v1/subnet/" + id + "/ip-address"
-        	client := &http.Client{}
-        	req, _ := http.NewRequest("GET", urlstring, nil)
-        	btoken := "Bearer " + token
-        	req.Header.Set("Authorization", btoken)
-        	resp, _ := client.Do(req)
-		defer resp.Body.Close()
-        	var ipList SubnetList
-		if resp.StatusCode != 200 {
-			return newip, "",fmt.Errorf("error")
-		}
-		body, _ = ioutil.ReadAll(resp.Body)
-		if err := json.Unmarshal(body, &ipList); err != nil {
+        defer resp.Body.Close()
+        var subnetList SubnetList
+        if resp.StatusCode == 200 {
+                body, _ := ioutil.ReadAll(resp.Body)
+                //logging.Debugf("Body is %s and %d",body,resp.StatusCode)
+                //var tok IPAMToken
+                if err := json.Unmarshal(body, &subnetList); err != nil {
                         logging.Errorf("json decoding failure of %s with error %s",body,err)
                         return newip,"", err
                 }
-		logging.Debugf("response is %v",ipList.SList)
-		ipId := ""
-		for _, ipBlock := range ipList.SList {
-			if ipBlock.Desc == pod {
-				ipId = ipBlock.Id
-				break
-			}
-		}
+                logging.Debugf("decoded data is %v",subnetList.SList)
+                // we will go through the list to find the subnet of interest and extract its id and gw info
+
+                id := ""
+                gw := ""
+                sn := ""
+                mask := ""
+                for _,subnets := range  subnetList.SList {
+                        if subnets.Name == pool {
+                                id = subnets.Id
+                                gw = getGateway(token, ipam, id)
+                                sn = subnets.Subnet
+                                mask = subnets.Mask
+                                break
+                        }
+                }
+                logging.Debugf("id for pool %s is %s with def gw %s and subnet %s/%s",pool,id,gw,sn,mask)
+		// get the next free ip in subnet
+		// check if a entry already exists for the podRef
+                urlstring := "http://" + ipam.Url + "/api/" + ipam.AppID + "/subnets/" + id + "/addresses"
+                client := &http.Client{}
+                req, _ := http.NewRequest("GET", urlstring, nil)
+                req.Header.Set("token", token)
+                resp, _ := client.Do(req)
+                defer resp.Body.Close()
+                var ipList SubnetIPList
+                if resp.StatusCode != 200 {
+                        return newip, "",fmt.Errorf("error")
+                }
+                body, _ = ioutil.ReadAll(resp.Body)
+                if err := json.Unmarshal(body, &ipList); err != nil {
+                        logging.Errorf("json decoding failure of %s with error %s",body,err)
+                        return newip,"", err
+                }
+                logging.Debugf("response is %v",ipList.SList)
+                ipId := ""
+                ipAddr := ""
+                for _, ipBlock := range ipList.SList {
+                        if ipBlock.Hostname == pod {
+                                ipId = ipBlock.Id
+                                ipAddr = ipBlock.IP
+                                break
+                        }
+                }
+
 		if ipId == "" {
 			logging.Errorf("No IP allocated for pod %s",pod)
 			return newip,"", fmt.Errorf("error")
 		}
+
 		logging.Debugf("Trying to deallocate IP with id %s",ipId)
-		urlstring = "http://" + ipam.Url + "/api/v1/ip-address/" + ipId + "/" 
+		urlstring = "http://" + ipam.Url + "/api/" + ipam.AppID + "/addresses/" + ipAddr + "/" + id 
 		client1 := &http.Client{}
                 req, _ = http.NewRequest("DELETE", urlstring, nil)
-                btoken = "Bearer " + token
-                req.Header.Set("Authorization", btoken)
+		req.Header.Set("token", token)
 		resp1, _ := client1.Do(req)
 		defer resp1.Body.Close()
-                if resp1.StatusCode != 204 {
+                if resp1.StatusCode != 200 {
 			logging.Errorf("Deallocating ip with id %s failed request is %s and response is %s",ipId,req,resp1)
                         return newip, "",fmt.Errorf("error")
                 }
@@ -382,10 +418,12 @@ func IPManagement(mode int, ipamConf types.IPAMConfig, containerID string, podRe
 
         jsonBytes, err := ioutil.ReadAll(jsonFile)
         if err != nil {
+            logging.Debugf("2")
             return newip, "",fmt.Errorf("LoadIPAMConfig Flatfile - ioutil.ReadAll error: %s", err)
         }
 
         if err := json.Unmarshal(jsonBytes, &ipamProv); err != nil {
+            logging.Debugf("3")
             return newip, "",fmt.Errorf("LoadIPAMConfig Flatfile - JSON Parsing Error: %s / bytes: %s", err, jsonBytes)
         } 
 
