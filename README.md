@@ -16,6 +16,60 @@ for more info on openwisp-ipam, refer to https://github.com/openwisp/openwisp-ip
 
 For now if the annotation podname: "" is added to a deployment, then the annotation value is used as the reference in the ipam database. so if for some reason the pod moves to a different node and starts up, it will still get same IP if a IPAM delete was not sent for the failed pod. In this way IP doesnt change for pod migration due to node failure etc.
 
+Example pod definition
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: test
+  name: test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: test
+  strategy: {}
+  template:
+    metadata:
+      annotations:
+        k8s.v1.cni.cncf.io/networks: whereabouts-conf
+        podname: test234                <----unique name for this deployment across the whole IPAM subnet
+      creationTimestamp: null
+      labels:
+        app: test
+    spec:
+      containers:
+      - image: nginx
+        imagePullPolicy: IfNotPresent
+        name: nginx
+        resources: {}
+```
+Pool definition which supports pool name definition using the CNI Args convention
+
+```
+apiVersion: "k8s.cni.cncf.io/v1"
+kind: NetworkAttachmentDefinition
+metadata:
+  name: whereabouts-conf
+spec:
+  config: '{
+      "cniVersion": "0.3.0",
+      "name": "whereaboutsexample",
+      "args": {"pool": "test"},   <--- pool name to be configured in IPAM provider from which IP is allocated
+      "type": "macvlan",
+      "master": "ens38",
+      "mode": "bridge",
+      "ipam": {
+        "type": "whereabouts",
+        "datastore": "kubernetes",
+        "range": "192.168.2.225/28", <--- Ignored when ipam provider is used, the above pool name will be used instead
+        "log_file": "/tmp/whereabouts.log",
+        "log_level": "debug"
+      }
+    }'
+```
 ## Introduction
 
 CNI (Container Network Interface) plugins typically have a configuration element named `ipam`. CNI IPAM plugins can assign IP addresses, and Whereabouts assigns IP addresses within a range -- without having to use a DHCP server. 
