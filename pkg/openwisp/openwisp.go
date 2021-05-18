@@ -316,60 +316,10 @@ func deallocateIP(token string, ipam IPAMPlug, pod string , pool string) (net.IP
 // IPManagement manages ip allocation and deallocation from a storage perspective
 func IPManagement(mode int, ipamConf types.IPAMConfig, containerID string, podRef string) (net.IPNet, string, error) {
 
-	logging.Debugf("IPManagement -- mode: %v / host: %v / containerID: %v / podRef: %v", mode, ipamConf.EtcdHost, containerID, podRef)
+	logging.Debugf("IPManagement for openwisp -- mode: %v / host: %v / containerID: %v / podRef: %v", mode, ipamConf.EtcdHost, containerID, podRef)
 
 	var newip net.IPNet
 	ipamProv := IPAMPlug{}
-	// Skip invalid modes
-	/*
-	switch mode {
-	case types.Allocate, types.Deallocate:
-	default:
-		return newip, fmt.Errorf("Got an unknown mode passed to IPManagement: %v", mode)
-	}
-	*/
-	/*
-
-// IPManagement manages ip allocation and deallocation from a storage perspective
-func IPManagement(mode int, ipamConf types.IPAMConfig, containerID string, podRef string) (net.IPNet, string, error) {
-
-	logging.Debugf("IPManagement -- mode: %v / host: %v / containerID: %v / podRef: %v", mode, ipamConf.EtcdHost, containerID, podRef)
-
-	var newip net.IPNet
-	ipamProv := IPAMPlug{}
-	// Skip invalid modes
-	/*
-	switch mode {
-	case types.Allocate, types.Deallocate:
-	default:
-		return newip, fmt.Errorf("Got an unknown mode passed to IPManagement: %v", mode)
-	}
-	*/
-	/*
-	var ipam Store
-	var pool IPPool
-	var err error
-	switch ipamConf.Datastore {
-	case types.DatastoreETCD:
-		ipam, err = NewETCDIPAM(ipamConf)
-	case types.DatastoreKubernetes:
-		ipam, err = NewKubernetesIPAM(containerID, ipamConf)
-	}
-	if err != nil {
-		logging.Errorf("IPAM %s client initialization error: %v", ipamConf.Datastore, err)
-		return newip, fmt.Errorf("IPAM %s client initialization error: %v", ipamConf.Datastore, err)
-	}
-	defer ipam.Close()
-
-	ctx, cancel := context.WithTimeout(context.Background(), RequestTimeout)
-	defer cancel()
-        
-	// Check our connectivity first
-	if err := ipam.Status(ctx); err != nil {
-		logging.Errorf("IPAM connectivity error: %v", err)
-		return newip, err
-	}
-	*/
 
         jsonFile, err := os.Open("/etc/cni/net.d/whereabouts.d/whereabouts-ipam.conf")
 

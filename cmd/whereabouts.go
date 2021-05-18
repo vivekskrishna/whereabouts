@@ -14,9 +14,9 @@ import (
 	"github.com/dougbtv/whereabouts/pkg/allocate"
 	"github.com/dougbtv/whereabouts/pkg/config"
 	"github.com/dougbtv/whereabouts/pkg/logging"
-	//"github.com/dougbtv/whereabouts/pkg/storage"
+	"github.com/dougbtv/whereabouts/pkg/storage"
 	"github.com/dougbtv/whereabouts/pkg/openwisp"
-	"pkg/phpipam"
+	"github.com/dougbtv/whereabouts/pkg/phpipam"
 	"github.com/dougbtv/whereabouts/pkg/types"
 )
 
@@ -73,7 +73,15 @@ func cmdAdd(args *skel.CmdArgs) error {
 
 	logging.Debugf("Beginning IPAM for ContainerID: %v", args.ContainerID)
 	//newip, err := storage.IPManagement(types.Allocate, *ipamConf, args.ContainerID, getPodRef(args.Args))
-	newip, gw1, err := openwisp.IPManagement(types.Allocate, *ipamConf, args.ContainerID, getPodRef(args.Args))
+	var newip net.IPNet
+	gw1 := ""
+	if ipamProv.Type == "openwisp" {
+	    newip, gw1, err = openwisp.IPManagement(types.Allocate, *ipamConf, args.ContainerID, getPodRef(args.Args))
+        } else if ipamProv.Type == "phpipam" {
+            newip, gw1, err = phpipam.IPManagement(types.Allocate, *ipamConf, args.ContainerID, getPodRef(args.Args))
+        } else {
+	    newip, err = storage.IPManagement(types.Allocate, *ipamConf, args.ContainerID, getPodRef(args.Args))
+	}
 	ipamConf.Gateway = net.ParseIP(gw1)
 
 
@@ -116,8 +124,34 @@ func cmdDel(args *skel.CmdArgs) error {
 	logging.Debugf("DEL - IPAM configuration successfully read: %+v", filterConf(*ipamConf))
 	logging.Debugf("ContainerID: %v", args.ContainerID)
 
+	ipamProv := IPAMPlug{}
+        jsonFile, err := os.Open("/etc/cni/net.d/whereabouts.d/whereabouts-ipam.conf")
+
+        if err != nil {
+            logging.Debugf("1")
+            return fmt.Errorf("Error opening flat configuration file %s", err)
+        }
+
+        defer jsonFile.Close()
+
+        jsonBytes, err := ioutil.ReadAll(jsonFile)
+        if err != nil {
+            return fmt.Errorf("LoadIPAMConfig Flatfile - ioutil.ReadAll error: %s", err)
+        }
+
+        if err := json.Unmarshal(jsonBytes, &ipamProv); err != nil {
+            return fmt.Errorf("LoadIPAMConfig Flatfile - JSON Parsing Error: %s / bytes: %s", err, jsonBytes)
+        }
+
+
 	//_, err = storage.IPManagement(types.Deallocate, *ipamConf, args.ContainerID, getPodRef(args.Args))
-	_,_,err = openwisp.IPManagement(types.Deallocate, *ipamConf, args.ContainerID, getPodRef(args.Args))
+	if ipamProv.Type == "openwisp" {
+	    _,_,err = openwisp.IPManagement(types.Deallocate, *ipamConf, args.ContainerID, getPodRef(args.Args))
+	} else if ipamProv.Type == "phpipam" {
+            _,_, err = phpipam.IPManagement(types.Deallocate, *ipamConf, args.ContainerID, getPodRef(args.Args))
+        } else {
+            _, err = storage.IPManagement(types.Deallocate, *ipamConf, args.ContainerID, getPodRef(args.Args))
+        }
 	if err != nil {
 		logging.Verbosef("WARNING: Problem deallocating IP: %s", err)
 		// return fmt.Errorf("Error deallocating IP: %s", err)

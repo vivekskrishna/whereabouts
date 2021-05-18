@@ -34,6 +34,7 @@ IPAMTYPE=$(cat /var/ipam/type)
 IPAMPWD=$(cat /var/ipam/password)
 IPAMURL=$(cat /var/ipam/url)
 IPAMUSER=$(cat /var/ipam/username)
+IPAMAPPID=$(cat /var/ipam/appid)
 
 # Setup our logging routines
 
@@ -119,7 +120,8 @@ EOF
   "ipamtype": "${IPAMTYPE}",
   "ipamuser": "${IPAMUSER}",
   "ipampwd": "${IPAMPWD}",
-  "ipamurl": "${IPAMURL}"
+  "ipamurl": "${IPAMURL}",
+  "appid": "${IPAMAPPID}"
 }
 EOF
 

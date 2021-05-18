@@ -1,5 +1,4 @@
-package openwisp
-
+package phpipam
 import (
 	"context"
 	"fmt"
@@ -42,6 +41,11 @@ type IPAMToken struct {
 	Token      string        `json:"token"`
 }
 
+type IPAMTokenResp struct {
+        Data      IPAMToken        `json:"data"`
+}
+
+
 type SubnetDescription struct {
 	Defaultgw   string       `json:"gw"`
 }
@@ -59,9 +63,13 @@ type SubnetList struct {
 	SList    []SubnetInfo    `json:"data"`
 }
 
+type SubnetIPHostName struct {
+        Hostname  string         `json:"hostname",omitempty`
+}
+
 //json format to get IP details in a subnet
 type SubnetIP struct {
-	IP        string         `json:"ip_address",omitempty`
+	IP        string         `json:"ip",omitempty`
 	Desc      string         `json:"description",omitempty`
 	Hostname  string         `json:"hostname",omitempty`
 	Gateway   string         `json:"is_gateway",omitempty`
@@ -94,18 +102,17 @@ type Store interface {
 }
 
 func getCredentials(ipam IPAMPlug) (string, error) {
-    urlstring := "http://" + ipam.Url + "/api/v1/user/token/"
+    urlstring := "http://" + ipam.Url + "/api/" + ipam.AppID + "/user/"
     client := &http.Client{
 	Timeout: time.Second * 5,
     }
 
-    req, err := http.NewRequest("GET", urlstring, nil)
+    req, err := http.NewRequest("POST", urlstring, nil)
     if err != nil {
 	return "Error", fmt.Errorf("Got error %s", err.Error())
     }
-    username := "root"
-    password := "ragavendra"
-    req.SetBasicAuth(username, password)
+    req.SetBasicAuth(ipam.Username, ipam.Password)
+    logging.Errorf("Request is %s", req)
     resp, err := client.Do(req)
     if err != nil {
 	return "Error", fmt.Errorf("Got error %s", err.Error())
@@ -113,13 +120,14 @@ func getCredentials(ipam IPAMPlug) (string, error) {
     defer resp.Body.Close()
     if resp.StatusCode == 200 {
         body, _ := ioutil.ReadAll(resp.Body)
-	var tok IPAMToken
+	var tok IPAMTokenResp
         if err := json.Unmarshal(body, &tok); err != nil {
 		return "", err
 	}
-        return tok.Token, err
+        logging.Errorf("Response is %s", body)
+        return tok.Data.Token, err
     } 
-    logging.Errorf("Response code is %s", resp.StatusCode)
+    logging.Errorf("Response code is %s ", resp.StatusCode)
     return "", err
 }
 
@@ -138,7 +146,7 @@ func getGateway(token string, ipam IPAMPlug, subnetID string) string {
                         logging.Errorf("json decoding failure of %s with error %s",body,err)
                         return ""
                 }
-                logging.Debugf("decoded data is %v",ipList)
+
 		for _,ips := range  ipList.SList {
                         if ips.Gateway == "1" {
 				return ips.IP
@@ -187,6 +195,7 @@ func allocateIP(token string, ipam IPAMPlug, pod string , pool string) (net.IPNe
 		logging.Debugf("id for pool %s is %s with def gw %s and subnet %s/%s",pool,id,gw,sn,mask)
 
 
+		logging.Debugf("Hello there")
 		// check if a entry already exists for the podRef
 		urlstring := "http://" + ipam.Url + "/api/" + ipam.AppID + "/subnets/" + id + "/addresses"
                 client := &http.Client{}
@@ -196,6 +205,7 @@ func allocateIP(token string, ipam IPAMPlug, pod string , pool string) (net.IPNe
                 defer resp.Body.Close()
                 var ipList SubnetIPList
                 if resp.StatusCode != 200 {
+			logging.Errorf("response code is %s", resp.StatusCode)
                         return newip, "",fmt.Errorf("error")
                 }
                 body, _ = ioutil.ReadAll(resp.Body)
@@ -203,7 +213,7 @@ func allocateIP(token string, ipam IPAMPlug, pod string , pool string) (net.IPNe
                         logging.Errorf("json decoding failure of %s with error %s",body,err)
                         return newip,"", err
                 }
-                logging.Debugf("response is %v",ipList.SList)
+                logging.Debugf("decoded response is %v",ipList.SList)
                 ipId := ""
 		ipAddr := ""
                 for _, ipBlock := range ipList.SList {
@@ -213,9 +223,10 @@ func allocateIP(token string, ipam IPAMPlug, pod string , pool string) (net.IPNe
                                 break
                         }
                 }
+		logging.Debugf("Checking resp for allocated IP for pod")
                 if ipId != "" {
                         logging.Debugf(" IP %s already allocated for pod %s",ipAddr, pod)
-                        ipNet := ipAddr + "/" + sn
+                        ipNet := ipAddr + "/" + mask
                         _,newip1,_ := net.ParseCIDR(ipNet)
                         newip.IP = net.ParseIP(ipAddr)
                         newip.Mask = newip1.Mask
@@ -223,22 +234,26 @@ func allocateIP(token string, ipam IPAMPlug, pod string , pool string) (net.IPNe
                         return newip, gw ,nil 
                 }
 		//end of check
+		logging.Debugf("Reserving IP for host %s ",pod)
 
 		// get the next free ip in subnet
 		allocated := 0
 		retries := DatastoreRetries
 		for allocated < 1 &&  retries > 0 {
-               		urlstring := "http://" + ipam.Url + "/api/" + ipam.AppID + "/subnets/addresses/first_free/" + id
+               		urlstring := "http://" + ipam.Url + "/api/" + ipam.AppID + "/addresses/first_free/" + id
         		client := &http.Client{}
-			var subnetIP SubnetIP
+			var subnetIP SubnetIPHostName
                         subnetIP.Hostname = pod
                         ipDet_json,_ := json.Marshal(subnetIP)
+			logging.Debugf(" Request data is %s",ipDet_json)
                         req_body := strings.NewReader(string(ipDet_json))
-        		req, _ := http.NewRequest("GET", urlstring, req_body)
+        		req, _ := http.NewRequest("POST", urlstring, req_body)
 			req.Header.Set("token", token)
+			req.Header.Set("Content-Type", "application/json")
 			resp, _ := client.Do(req)
 			defer resp.Body.Close()
                         if resp.StatusCode != 201 {
+				logging.Debugf("Request is %s",req)
 				logging.Debugf("Got response %s and %s",resp,err)
                                 return newip, "", fmt.Errorf("error response %d",resp.StatusCode)
                         } else {
@@ -246,12 +261,13 @@ func allocateIP(token string, ipam IPAMPlug, pod string , pool string) (net.IPNe
 			    retries--
 			}
                         var IPDetails SubnetIPCreate 
+			body, _ = ioutil.ReadAll(resp.Body)
 			if err := json.Unmarshal(body, &IPDetails); err != nil {
                             logging.Errorf("json decoding failure of %s with error %s",body,err)
                             return newip,"", err
                         }
 			ip := IPDetails.IP
-			ipNet := ip + "/" + sn
+			ipNet := ip + "/" + mask
 		        _,newip1,_ := net.ParseCIDR(ipNet) 
                         newip.IP = net.ParseIP(ip)
 			newip.Mask = newip1.Mask
@@ -352,60 +368,10 @@ func deallocateIP(token string, ipam IPAMPlug, pod string , pool string) (net.IP
 // IPManagement manages ip allocation and deallocation from a storage perspective
 func IPManagement(mode int, ipamConf types.IPAMConfig, containerID string, podRef string) (net.IPNet, string, error) {
 
-	logging.Debugf("IPManagement -- mode: %v / host: %v / containerID: %v / podRef: %v", mode, ipamConf.EtcdHost, containerID, podRef)
+	logging.Debugf("IPManagement for phpipam -- mode: %v / host: %v / containerID: %v / podRef: %v", mode, ipamConf.EtcdHost, containerID, podRef)
 
 	var newip net.IPNet
 	ipamProv := IPAMPlug{}
-	// Skip invalid modes
-	/*
-	switch mode {
-	case types.Allocate, types.Deallocate:
-	default:
-		return newip, fmt.Errorf("Got an unknown mode passed to IPManagement: %v", mode)
-	}
-	*/
-	/*
-
-// IPManagement manages ip allocation and deallocation from a storage perspective
-func IPManagement(mode int, ipamConf types.IPAMConfig, containerID string, podRef string) (net.IPNet, string, error) {
-
-	logging.Debugf("IPManagement -- mode: %v / host: %v / containerID: %v / podRef: %v", mode, ipamConf.EtcdHost, containerID, podRef)
-
-	var newip net.IPNet
-	ipamProv := IPAMPlug{}
-	// Skip invalid modes
-	/*
-	switch mode {
-	case types.Allocate, types.Deallocate:
-	default:
-		return newip, fmt.Errorf("Got an unknown mode passed to IPManagement: %v", mode)
-	}
-	*/
-	/*
-	var ipam Store
-	var pool IPPool
-	var err error
-	switch ipamConf.Datastore {
-	case types.DatastoreETCD:
-		ipam, err = NewETCDIPAM(ipamConf)
-	case types.DatastoreKubernetes:
-		ipam, err = NewKubernetesIPAM(containerID, ipamConf)
-	}
-	if err != nil {
-		logging.Errorf("IPAM %s client initialization error: %v", ipamConf.Datastore, err)
-		return newip, fmt.Errorf("IPAM %s client initialization error: %v", ipamConf.Datastore, err)
-	}
-	defer ipam.Close()
-
-	ctx, cancel := context.WithTimeout(context.Background(), RequestTimeout)
-	defer cancel()
-        
-	// Check our connectivity first
-	if err := ipam.Status(ctx); err != nil {
-		logging.Errorf("IPAM connectivity error: %v", err)
-		return newip, err
-	}
-	*/
 
         jsonFile, err := os.Open("/etc/cni/net.d/whereabouts.d/whereabouts-ipam.conf")
 
@@ -434,9 +400,9 @@ func IPManagement(mode int, ipamConf types.IPAMConfig, containerID string, podRe
 	logging.Debugf("podref after annotation search is %s",podRef)
 	switch mode {
 	case types.Allocate:
-            return allocateIP(credential, ipamProv, podRef, "test")            	
+            return allocateIP(credential, ipamProv, podRef, ipamConf.Pool)            	
 	case types.Deallocate:
-            return deallocateIP(credential, ipamProv, podRef, "test")
+            return deallocateIP(credential, ipamProv, podRef, ipamConf.Pool)
 	default:
 	    logging.Errorf("Unknown mode of operation")
 	}
