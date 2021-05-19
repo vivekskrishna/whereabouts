@@ -71,7 +71,7 @@ spec:
   config: '{
       "cniVersion": "0.3.0",
       "name": "whereaboutsexample",
-      "args": {"pool": "test"},   <--- pool name to be configured in IPAM provider from which IP is allocated
+      "args": {"pool": "pool1"},   <--- pool name to be configured in IPAM provider from which IP is allocated, description in phpipam for a subnet
       "type": "macvlan",
       "master": "ens38",
       "mode": "bridge",
