@@ -11,8 +11,16 @@ Whereabouts can be used for both IPv4 & IPv6 addressing.
 
 #added by vivek
 
-This version of whereabouts is an experimental attempt to integrate with openwisp-ipam so that IP address will be allocated from a central place. In this way whereabouts talk to a central openwisp-ipam server to get the IP for the multus interface making the administration easy. openwisp-ipam supports API which will be used by whereabouts to allocate/deallocate IP.
+This version of whereabouts is an experimental attempt to integrate with openwisp-ipam so that IP address will be allocated from a central place. In this way whereabouts talk to a central openwisp-ipam/phpipam server to get the IP for the multus interface making the administration easy. openwisp-ipam and phpipam supports API which will be used by whereabouts to allocate/deallocate IP.
 for more info on openwisp-ipam, refer to https://github.com/openwisp/openwisp-ipam
+for more info on phpipam refer to https://phpipam.net/
+
+To be added- config needed in openwisp and phpipam to amke the solution work.
+
+PHPIPAM:
+  Once phpipam is configrued for non tls use, create a appid and then create pools in it like below for testipam. The description for each pool is used as pool name which is referenced va network attachment definition.
+  ![image](https://user-images.githubusercontent.com/48816314/118744864-b2998c80-b81a-11eb-9adc-75408d17d0ce.png)
+
 
 For now if the annotation podname: "" is added to a deployment, then the annotation value is used as the reference in the ipam database. so if for some reason the pod moves to a different node and starts up, it will still get same IP if a IPAM delete was not sent for the failed pod. In this way IP doesnt change for pod migration due to node failure etc.
 
