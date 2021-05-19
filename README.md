@@ -9,16 +9,22 @@ If you need a way to assign IP addresses dynamically across your cluster -- Wher
 
 Whereabouts can be used for both IPv4 & IPv6 addressing.
 
-#added by vivek
-
 This version of whereabouts is an experimental attempt to integrate with openwisp-ipam so that IP address will be allocated from a central place. In this way whereabouts talk to a central openwisp-ipam/phpipam server to get the IP for the multus interface making the administration easy. openwisp-ipam and phpipam supports API which will be used by whereabouts to allocate/deallocate IP.
 for more info on openwisp-ipam, refer to https://github.com/openwisp/openwisp-ipam
 for more info on phpipam refer to https://phpipam.net/
 
-To be added- config needed in openwisp and phpipam to amke the solution work.
+Many thanks to all the contributors of the main whereabouts cni project.
+
+To be added- config needed in openwisp 
 
 PHPIPAM:
-  Once phpipam is configrued for non tls use, create a appid and then create pools in it like below for testipam. The description for each pool is used as pool name which is referenced va network attachment definition.
+  Once phpipam is configured for non tls use, create an appid for API usage and then create subnet section in it like below for test. The description for each pool is used as pool name which is referenced va network attachment definition.
+  
+  APPID config for API enablement
+  
+  ![image](https://user-images.githubusercontent.com/48816314/118745410-ba0d6580-b81b-11eb-9cd4-4c53ec0cc9a7.png)
+
+  Pool subnet config for whereabouts usage
   ![image](https://user-images.githubusercontent.com/48816314/118744864-b2998c80-b81a-11eb-9adc-75408d17d0ce.png)
 
 
