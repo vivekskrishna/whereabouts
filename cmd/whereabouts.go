@@ -17,6 +17,7 @@ import (
 	"github.com/dougbtv/whereabouts/pkg/storage"
 	"github.com/dougbtv/whereabouts/pkg/openwisp"
 	"github.com/dougbtv/whereabouts/pkg/phpipam"
+        "github.com/dougbtv/whereabouts/pkg/nsxtipam"
 	"github.com/dougbtv/whereabouts/pkg/types"
 )
 
@@ -51,6 +52,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	result := &current.Result{}
 	result.DNS = ipamConf.DNS
 	result.Routes = ipamConf.Routes
+        result.CNIVersion = confVersion
 
         ipamProv := IPAMPlug{}
 	jsonFile, err := os.Open("/etc/cni/net.d/whereabouts.d/whereabouts-ipam.conf")
@@ -77,10 +79,21 @@ func cmdAdd(args *skel.CmdArgs) error {
 	gw1 := ""
 	if ipamProv.Type == "openwisp" {
 	    newip, gw1, err = openwisp.IPManagement(types.Allocate, *ipamConf, args.ContainerID, getPodRef(args.Args))
+	    result.Routes = ipamConf.Routes
         } else if ipamProv.Type == "phpipam" {
             newip, gw1, err = phpipam.IPManagement(types.Allocate, *ipamConf, args.ContainerID, getPodRef(args.Args))
+            result.Routes = ipamConf.Routes
+        } else if ipamProv.Type == "nsxtipam" {
+	    var route_list []*cnitypes.Route
+            newip, gw1, route_list,  err = nsxtipam.IPManagement(types.Allocate, *ipamConf, args.ContainerID, getPodRef(args.Args))
+	    //nsx-t also providdes option 121 routes. adding those routes to result
+	    //for route_entry := range route_list {
+	    result.Routes = route_list
+	//	result.Routes = append(result.Routes, route_list[route_entry])
+	   // }
         } else {
 	    newip, err = storage.IPManagement(types.Allocate, *ipamConf, args.ContainerID, getPodRef(args.Args))
+            result.Routes = ipamConf.Routes
 	}
 	ipamConf.Gateway = net.ParseIP(gw1)
 
@@ -104,7 +117,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 		Address: newip,
 		Gateway: ipamConf.Gateway})
 
-	logging.Debugf("IP is %s",result.IPs)
+	logging.Debugf("result is %s",result)
 	// Assign all the static IP elements.
 	for _, v := range ipamConf.Addresses {
 		result.IPs = append(result.IPs, &current.IPConfig{
@@ -112,6 +125,8 @@ func cmdAdd(args *skel.CmdArgs) error {
 			Address: v.Address,
 			Gateway: v.Gateway})
 	}
+	b,_ := json.MarshalIndent(result,"", "    ")
+        logging.Debugf("result returned is %s", b)
 	return cnitypes.PrintResult(result, confVersion)
 }
 
@@ -149,6 +164,8 @@ func cmdDel(args *skel.CmdArgs) error {
 	    _,_,err = openwisp.IPManagement(types.Deallocate, *ipamConf, args.ContainerID, getPodRef(args.Args))
 	} else if ipamProv.Type == "phpipam" {
             _,_, err = phpipam.IPManagement(types.Deallocate, *ipamConf, args.ContainerID, getPodRef(args.Args))
+        } else if ipamProv.Type == "nsxtipam" {
+             _,_,_,err = nsxtipam.IPManagement(types.Deallocate, *ipamConf, args.ContainerID, getPodRef(args.Args))
         } else {
             _, err = storage.IPManagement(types.Deallocate, *ipamConf, args.ContainerID, getPodRef(args.Args))
         }

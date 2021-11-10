@@ -17,7 +17,7 @@ package podData
 import (
 	//"context"
 	"flag"
-	"fmt"
+	//"fmt"
 	//"path/filepath"
 	"strings"
 	//"time"
@@ -79,11 +79,12 @@ func GetPodAnnotation(ipamConf types.IPAMConfig, podRef string) (string) {
 		pod := podRefVal[1]
 		poddata, err := clientset.CoreV1().Pods(namespace).Get(pod, metav1.GetOptions{})
 		if errors.IsNotFound(err) {
-			fmt.Printf("Pod %s in namespace %s not found\n", pod, namespace)
+			logging.Errorf("Pod %s in namespace %s not found\n", pod, namespace)
 		} else if statusError, isStatus := err.(*errors.StatusError); isStatus {
-			fmt.Printf("Error getting pod %s in namespace %s: %v\n",
+			logging.Debugf("Error getting pod %s in namespace %s: %v\n",
 				pod, namespace, statusError.ErrStatus.Message)
 		} else if err != nil {
+			logging.Errorf("Got error for pod annotation search %s",err)
 			return podRef
 		} else {
 			logging.Debugf("Found pod %s in namespace %s with data %s\n", pod, namespace,poddata.ObjectMeta.Annotations)
